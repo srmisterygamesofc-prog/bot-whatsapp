@@ -35,7 +35,7 @@ app.listen(port, () => {
     console.log(`Servidor web rodando na porta ${port}`);
 });
 
-// 1. Converter imagem em Sticker Normal
+// 1. Converter imagem em Sticker Normal (Estático)
 function convertImageToSticker(inputPath, outputPath) {
     return new Promise((resolve, reject) => {
         const ffmpeg = spawn('ffmpeg', [
@@ -57,7 +57,7 @@ function convertImageToSticker(inputPath, outputPath) {
     });
 }
 
-// 2. Converter vídeo/GIF em Sticker Animado
+// 2. Converter vídeo em Sticker Animado (SEM SOM)
 function convertVideoToSticker(inputPath, outputPath) {
     return new Promise((resolve, reject) => {
         const ffmpeg = spawn('ffmpeg', [
@@ -74,31 +74,30 @@ function convertVideoToSticker(inputPath, outputPath) {
 
         ffmpeg.on('close', (code) => {
             if (code === 0) resolve(outputPath);
-            else reject(new Error(`FFmpeg encerrou com código ${code}`));
+            else reject(new Error(`FFmpeg animado encerrou com código ${code}`));
         });
     });
 }
 
-// 3. Converter áudio em Figurinha com Som
-function convertAudioToAudioSticker(inputAudioPath, outputPath) {
+// 3. Converter vídeo em Figurinha Animada COM SOM (!faudio)
+function convertVideoWithAudioToSticker(inputPath, outputPath) {
     return new Promise((resolve, reject) => {
         const ffmpeg = spawn('ffmpeg', [
-            '-f', 'lavfi',
-            '-i', 'color=c=black:s=512x512:d=5',
-            '-i', inputAudioPath,
-            '-c:v', 'libwebp',
-            '-preset', 'default',
+            '-i', inputPath,
+            '-t', '7',
+            '-vf', 'scale=512:512:force_original_aspect_ratio=decrease,format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000,fps=15',
+            '-vcodec', 'libwebp',
             '-loop', '0',
-            '-pix_fmt', 'yuv420p',
-            '-shortest',
-            '-c:a', 'aac',
-            '-b:a', '128k',
+            '-preset', 'default',
+            '-c:a', 'aac',    // Mantém o áudio do vídeo
+            '-b:a', '128k',   // Qualidade do som
+            '-vsync', '0',
             outputPath
         ]);
 
         ffmpeg.on('close', (code) => {
             if (code === 0) resolve(outputPath);
-            else reject(new Error(`FFmpeg áudio encerrou com código ${code}`));
+            else reject(new Error(`FFmpeg com som encerrou com código ${code}`));
         });
     });
 }
@@ -156,14 +155,14 @@ async function connectToWhatsApp() {
             await sock.sendMessage(remoteJid, { 
                 text: '🤖 *Menu de Comandos*:\n\n' +
                       '🖼️ `!fnormal` - Imagem para figurinha normal\n' +
-                      '🎬 `!fanimada` - Vídeo/GIF para figurinha animada\n' +
-                      '🎵 `!faudio` - Responde a um áudio com este comando para criar figurinha com som\n' +
+                      '🎬 `!fanimada` - Vídeo para figurinha animada (sem som)\n' +
+                      '🎵 `!faudio` - Vídeo para figurinha animada *com som*\n' +
                       '📋 `!comandos` - Mostra esta lista' 
             });
             return;
         }
 
-        // !fnormal
+        // !fnormal (Imagem)
         if ((messageType === 'imageMessage' && text.includes('!fnormal')) || (hasQuoted && quotedMessage.imageMessage && text.includes('!fnormal'))) {
             try {
                 await sock.sendMessage(remoteJid, { text: '🔄 A criar figurinha normal...' });
@@ -185,7 +184,7 @@ async function connectToWhatsApp() {
             }
         }
 
-        // !fanimada
+        // !fanimada (Vídeo animado sem som)
         else if ((messageType === 'videoMessage' && text.includes('!fanimada')) || (hasQuoted && quotedMessage.videoMessage && text.includes('!fanimada'))) {
             try {
                 await sock.sendMessage(remoteJid, { text: '🔄 A criar figurinha animada...' });
@@ -207,17 +206,17 @@ async function connectToWhatsApp() {
             }
         }
 
-        // !faudio
-        else if (text.includes('!faudio') && hasQuoted && quotedMessage.audioMessage) {
+        // !faudio (Vídeo animado COM SOM)
+        else if ((messageType === 'videoMessage' && text.includes('!faudio')) || (hasQuoted && quotedMessage.videoMessage && text.includes('!faudio'))) {
             try {
                 await sock.sendMessage(remoteJid, { text: '🔄 A criar figurinha com som...' });
-                const targetMsg = { message: quotedMessage };
+                const targetMsg = (messageType === 'videoMessage') ? msg : { message: quotedMessage };
                 const stream = await downloadMediaMessage(targetMsg, 'buffer', {}, { logger: console });
-                const inputPath = path.join(__dirname, `audio_${Date.now()}.mp3`);
-                const outputPath = path.join(__dirname, `audio_sticker_${Date.now()}.webp`);
+                const inputPath = path.join(__dirname, `input_${Date.now()}.mp4`);
+                const outputPath = path.join(__dirname, `output_${Date.now()}.webp`);
 
                 fs.writeFileSync(inputPath, stream);
-                await convertAudioToAudioSticker(inputPath, outputPath);
+                await convertVideoWithAudioToSticker(inputPath, outputPath);
 
                 await sock.sendMessage(remoteJid, { sticker: fs.readFileSync(outputPath) });
 

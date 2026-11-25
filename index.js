@@ -1,4 +1,4 @@
-const { default: makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const express = require('express');
 const qrcode = require('qrcode');
 
@@ -8,7 +8,6 @@ const port = process.env.PORT || 3000;
 let qrCodeGlobal = '';
 let isConnected = false;
 
-// Página web para mostrar o QR Code de forma limpa no navegador
 app.get('/', (req, res) => {
     if (isConnected) {
         return res.send('<h1>Bot conectado com sucesso no WhatsApp! 🎉</h1>');
@@ -17,7 +16,6 @@ app.get('/', (req, res) => {
         return res.send('<h1>A gerar o QR Code, aguarda alguns segundos e atualiza a página...</h1>');
     }
     
-    // Gera a imagem do QR Code direto na página web
     qrcode.toDataURL(qrCodeGlobal, (err, src) => {
         if (err) return res.send('Erro ao gerar o QR Code.');
         res.send(`
@@ -34,12 +32,12 @@ app.listen(port, () => {
     console.log(`Servidor web rodando na porta ${port}`);
 });
 
-// Conexão com o WhatsApp
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
     const sock = makeWASocket({
         auth: state,
-        printQRInTerminal: false
+        printQRInTerminal: false,
+        browser: ["Ubuntu", "Chrome", "20.0.04"]
     });
 
     sock.ev.on('connection.update', (update) => {
@@ -47,12 +45,22 @@ async function connectToWhatsApp() {
         
         if (qr) {
             qrCodeGlobal = qr;
-            console.log('Novo QR Code gerado! Abre o link do teu site no Render para o ver.');
+            isConnected = false;
+            console.log('Novo QR Code gerado!');
         }
 
         if (connection === 'open') {
             isConnected = true;
+            qrCodeGlobal = '';
             console.log('Bot conectado com sucesso!');
+        }
+
+        if (connection === 'close') {
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            console.log('Conexão fechada. Reconectando...', shouldReconnect);
+            if (shouldReconnect) {
+                connectToWhatsApp();
+            }
         }
     });
 

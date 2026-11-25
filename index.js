@@ -1,17 +1,37 @@
 const { default: makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
-const qrcode = require('qrcode-terminal');
 const express = require('express');
+const qrcode = require('qrcode');
 
-// Servidor web falso só para o Render manter o bot ligado
 const app = express();
 const port = process.env.PORT || 3000;
 
+let qrCodeGlobal = '';
+let isConnected = false;
+
+// Página web para mostrar o QR Code de forma limpa no navegador
 app.get('/', (req, res) => {
-    res.send('Bot do WhatsApp está rodando!');
+    if (isConnected) {
+        return res.send('<h1>Bot conectado com sucesso no WhatsApp! 🎉</h1>');
+    }
+    if (!qrCodeGlobal) {
+        return res.send('<h1>A gerar o QR Code, aguarda alguns segundos e atualiza a página...</h1>');
+    }
+    
+    // Gera a imagem do QR Code direto na página web
+    qrcode.toDataURL(qrCodeGlobal, (err, src) => {
+        if (err) return res.send('Erro ao gerar o QR Code.');
+        res.send(`
+            <div style="text-align: center; margin-top: 50px; font-family: Arial;">
+                <h2>Escaneia este QR Code com o teu WhatsApp:</h2>
+                <img src="${src}" alt="QR Code WhatsApp" style="width: 300px; height: 300px;" />
+                <p>Atualiza a página se o código expirar.</p>
+            </div>
+        `);
+    });
 });
 
 app.listen(port, () => {
-    console.log(`Servidor rodando na porta ${port}`);
+    console.log(`Servidor web rodando na porta ${port}`);
 });
 
 // Conexão com o WhatsApp
@@ -24,10 +44,14 @@ async function connectToWhatsApp() {
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
+        
         if (qr) {
-            qrcode.generate(qr, { small: true });
+            qrCodeGlobal = qr;
+            console.log('Novo QR Code gerado! Abre o link do teu site no Render para o ver.');
         }
+
         if (connection === 'open') {
+            isConnected = true;
             console.log('Bot conectado com sucesso!');
         }
     });

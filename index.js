@@ -79,29 +79,6 @@ function convertVideoToSticker(inputPath, outputPath) {
     });
 }
 
-// 3. Converter vídeo em Figurinha Animada COM SOM (!faudio)
-function convertVideoWithAudioToSticker(inputPath, outputPath) {
-    return new Promise((resolve, reject) => {
-        const ffmpeg = spawn('ffmpeg', [
-            '-i', inputPath,
-            '-t', '7',
-            '-vf', 'scale=512:512:force_original_aspect_ratio=decrease,format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000,fps=15',
-            '-vcodec', 'libwebp',
-            '-loop', '0',
-            '-preset', 'default',
-            '-c:a', 'aac',    // Mantém o áudio do vídeo
-            '-b:a', '128k',   // Qualidade do som
-            '-vsync', '0',
-            outputPath
-        ]);
-
-        ffmpeg.on('close', (code) => {
-            if (code === 0) resolve(outputPath);
-            else reject(new Error(`FFmpeg com som encerrou com código ${code}`));
-        });
-    });
-}
-
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
     const sock = makeWASocket({
@@ -155,8 +132,7 @@ async function connectToWhatsApp() {
             await sock.sendMessage(remoteJid, { 
                 text: '🤖 *Menu de Comandos*:\n\n' +
                       '🖼️ `!fnormal` - Imagem para figurinha normal\n' +
-                      '🎬 `!fanimada` - Vídeo para figurinha animada (sem som)\n' +
-                      '🎵 `!faudio` - Vídeo para figurinha animada *com som*\n' +
+                      '🎬 `!fanimada` - Vídeo para figurinha animada\n' +
                       '📋 `!comandos` - Mostra esta lista' 
             });
             return;
@@ -184,7 +160,7 @@ async function connectToWhatsApp() {
             }
         }
 
-        // !fanimada (Vídeo animado sem som)
+        // !fanimada (Vídeo animado)
         else if ((messageType === 'videoMessage' && text.includes('!fanimada')) || (hasQuoted && quotedMessage.videoMessage && text.includes('!fanimada'))) {
             try {
                 await sock.sendMessage(remoteJid, { text: '🔄 A criar figurinha animada...' });
@@ -203,28 +179,6 @@ async function connectToWhatsApp() {
             } catch (error) {
                 console.error('Erro:', error);
                 await sock.sendMessage(remoteJid, { text: '❌ Erro ao criar figurinha animada.' });
-            }
-        }
-
-        // !faudio (Vídeo animado COM SOM)
-        else if ((messageType === 'videoMessage' && text.includes('!faudio')) || (hasQuoted && quotedMessage.videoMessage && text.includes('!faudio'))) {
-            try {
-                await sock.sendMessage(remoteJid, { text: '🔄 A criar figurinha com som...' });
-                const targetMsg = (messageType === 'videoMessage') ? msg : { message: quotedMessage };
-                const stream = await downloadMediaMessage(targetMsg, 'buffer', {}, { logger: console });
-                const inputPath = path.join(__dirname, `input_${Date.now()}.mp4`);
-                const outputPath = path.join(__dirname, `output_${Date.now()}.webp`);
-
-                fs.writeFileSync(inputPath, stream);
-                await convertVideoWithAudioToSticker(inputPath, outputPath);
-
-                await sock.sendMessage(remoteJid, { sticker: fs.readFileSync(outputPath) });
-
-                if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
-                if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
-            } catch (error) {
-                console.error('Erro:', error);
-                await sock.sendMessage(remoteJid, { text: '❌ Erro ao criar figurinha com som.' });
             }
         }
     });
